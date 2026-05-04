@@ -3,11 +3,20 @@
 import { useState, useRef, useEffect } from "react";
 
 // 消息类型定义
+interface Source {
+  source: string;
+  page: number;
+  similarity: number;
+  content: string;
+}
+
 interface Message {
   id: string;
   role: "user" | "ai";
   content: string;
   isLoading?: boolean;
+  sources?: Source[];
+  ragEnabled?: boolean;
 }
 
 // API 配置
@@ -17,6 +26,8 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [ragEnabled, setRagEnabled] = useState(false);
+  const [kbStats, setKbStats] = useState<{ total_chunks: number; sources: string[] } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -35,6 +46,42 @@ export default function ChatPage() {
       )}px`;
     }
   }, [input]);
+
+  // 获取知识库状态
+  useEffect(() => {
+    fetchKbStats();
+  }, []);
+
+  const fetchKbStats = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/rag/stats`);
+      const data = await res.json();
+      if (data.success) {
+        setKbStats({ total_chunks: data.total_chunks, sources: data.sources });
+      }
+    } catch {
+      // 忽略错误
+    }
+  };
+
+  // 加载知识库
+  const loadKnowledgeBase = async () => {
+    setIsLoading(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/rag/load`, { method: "POST" });
+      const data = await res.json();
+      if (data.success) {
+        setKbStats({ total_chunks: data.stats.total_chunks, sources: data.stats.sources });
+        alert(`知识库加载完成！\n共 ${data.stats.total_chunks} 个文档块\n来源: ${data.stats.sources.join(", ")}`);
+      } else {
+        alert("加载失败: " + data.error);
+      }
+    } catch (error) {
+      alert("连接失败，请检查后端服务");
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   // 发送消息
   const sendMessage = async () => {
@@ -58,7 +105,8 @@ export default function ChatPage() {
     setIsLoading(true);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/chat`, {
+      const endpoint = ragEnabled ? "/api/chat/rag" : "/api/chat";
+      const response = await fetch(`${API_BASE_URL}${endpoint}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -72,7 +120,13 @@ export default function ChatPage() {
         setMessages((prev) =>
           prev.map((msg) =>
             msg.id === loadingMessage.id
-              ? { ...msg, content: data.reply, isLoading: false }
+              ? {
+                  ...msg,
+                  content: data.reply,
+                  isLoading: false,
+                  sources: data.sources,
+                  ragEnabled: data.rag_enabled,
+                }
               : msg
           )
         );
@@ -80,7 +134,7 @@ export default function ChatPage() {
         setMessages((prev) =>
           prev.map((msg) =>
             msg.id === loadingMessage.id
-              ? { ...msg, content: "出错了，请稍后重试", isLoading: false }
+              ? { ...msg, content: "出错了: " + (data.error || "请稍后重试"), isLoading: false }
               : msg
           )
         );
@@ -123,13 +177,52 @@ export default function ChatPage() {
       {/* 头部 */}
       <header className="chat-header">
         <h1>🤖 AI 聊天助手</h1>
-        <p>基于 LangChain + DeepSeek + Flask</p>
-        {messages.length > 0 && (
-          <button className="clear-button" onClick={clearChat}>
-            清空对话
-          </button>
-        )}
+        <p>基于 LangChain + DeepSeek + Flask + RAG</p>
+        <div className="header-actions">
+          {messages.length > 0 && (
+            <button className="clear-button" onClick={clearChat}>
+              清空对话
+            </button>
+          )}
+        </div>
       </header>
+
+      {/* 工具栏 */}
+      <div className="toolbar">
+        <div className="rag-toggle">
+          <label className="switch">
+            <input
+              type="checkbox"
+              checked={ragEnabled}
+              onChange={(e) => setRagEnabled(e.target.checked)}
+            />
+            <span className="slider"></span>
+          </label>
+          <span className="rag-label">
+            📚 知识库检索 {ragEnabled ? "已开启" : "已关闭"}
+          </span>
+        </div>
+
+        <div className="kb-info">
+          {kbStats ? (
+            <span className="kb-stats">
+              知识库: {kbStats.total_chunks} 块文档
+              {kbStats.sources.length > 0 && (
+                <span className="kb-sources"> ({kbStats.sources.join(", ")})</span>
+              )}
+            </span>
+          ) : (
+            <span className="kb-stats">知识库: 未连接</span>
+          )}
+          <button
+            className="load-kb-button"
+            onClick={loadKnowledgeBase}
+            disabled={isLoading}
+          >
+            {isLoading ? "加载中..." : "🔄 加载文档"}
+          </button>
+        </div>
+      </div>
 
       {/* 消息列表 */}
       <div className="chat-messages">
@@ -137,20 +230,43 @@ export default function ChatPage() {
           <div className="empty-state">
             <h2>👋 欢迎使用 AI 聊天助手</h2>
             <p>在下方输入框发送消息，开始与 AI 对话</p>
+            <div className="rag-hint">
+              <p>💡 开启「知识库检索」可以让 AI 基于 PDF 文档回答</p>
+            </div>
           </div>
         ) : (
           messages.map((msg) => (
-            <div
-              key={msg.id}
-              className={`message ${msg.role}`}
-            >
+            <div key={msg.id} className={`message ${msg.role}`}>
               <div className="avatar">
                 {msg.role === "user" ? "👤" : "🤖"}
               </div>
-              <div
-                className={`message-content ${msg.isLoading ? "loading" : ""}`}
-              >
-                {msg.content || (msg.isLoading ? "思考中" : "")}
+              <div className="message-wrapper">
+                <div
+                  className={`message-content ${msg.isLoading ? "loading" : ""}`}
+                >
+                  {msg.content || (msg.isLoading ? "思考中" : "")}
+                </div>
+                {/* 显示 RAG 来源 */}
+                {msg.sources && msg.sources.length > 0 && (
+                  <div className="sources-box">
+                    <div className="sources-title">📚 参考来源</div>
+                    {msg.sources.map((source, idx) => (
+                      <div key={idx} className="source-item">
+                        <span className="source-badge">
+                          {source.source} (第{source.page}页)
+                        </span>
+                        <span className="source-similarity">
+                          相似度: {source.similarity}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {msg.ragEnabled === false && msg.role === "ai" && !msg.isLoading && (
+                  <div className="rag-off-hint">
+                    ⚠️ 知识库为空，使用普通对话模式
+                  </div>
+                )}
               </div>
             </div>
           ))
@@ -164,7 +280,7 @@ export default function ChatPage() {
           <textarea
             ref={textareaRef}
             className="chat-input"
-            placeholder="输入消息，按 Enter 发送..."
+            placeholder={ragEnabled ? "输入消息，AI将基于知识库回答..." : "输入消息，按 Enter 发送..."}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}

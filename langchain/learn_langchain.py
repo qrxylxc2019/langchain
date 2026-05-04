@@ -166,6 +166,64 @@ def learn_memory():
 
 
 # ============================================================
+# 第五部分：RAG (检索增强生成)
+# ============================================================
+
+def learn_rag():
+    """学习 RAG 知识库检索"""
+    print("=" * 50)
+    print("📚 第五部分：RAG (检索增强生成)")
+    print("=" * 50)
+
+    import sys
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from rag.rag_engine import RAGEngine
+
+    print("\n🤔 什么是 RAG？")
+    print("   RAG = Retrieval-Augmented Generation（检索增强生成）")
+    print("   让 AI 在回答问题时，先检索知识库中的相关资料，再生成回答")
+    print("   这样可以减少幻觉，提高回答的准确性")
+
+    print("\n📋 RAG 的工作流程：")
+    print("   1. 加载文档（PDF、TXT 等）")
+    print("   2. 分割文本为小块（Chunk）")
+    print("   3. 向量化（Embedding）")
+    print("   4. 存储到向量数据库")
+    print("   5. 用户提问时，检索相似的文本块")
+    print("   6. 将检索结果作为上下文，让 LLM 生成回答")
+
+    # 初始化 RAG 引擎
+    print("\n🔄 初始化 RAG 引擎...")
+    engine = RAGEngine()
+
+    # 查看知识库状态
+    stats = engine.get_stats()
+    print(f"\n📊 当前知识库状态:")
+    print(f"   文档块数: {stats['total_chunks']}")
+    print(f"   来源文档: {stats['sources']}")
+
+    if stats['total_chunks'] == 0:
+        print("\n⚠️ 知识库为空，请先运行 engine.load_pdfs() 加载文档")
+        print("   文档目录: langchain/pdf/")
+    else:
+        # 查询知识库
+        question = "什么是OpenClaw？"
+        print(f"\n🔍 测试查询: {question}")
+        result = engine.query(question)
+
+        if result["success"]:
+            print(f"\n📝 回答:\n{result['answer'][:200]}...")
+            print(f"\n📚 参考来源:")
+            for source in result.get("sources", [])[:2]:
+                print(f"   - {source['source']} (第{source['page']}页) [相似度: {source['similarity']}]")
+
+    print("\n💡 RAG 的优势：")
+    print("   - 减少 AI 幻觉（胡说八道）")
+    print("   - 可以基于私有文档回答")
+    print("   - 回答可溯源，知道参考了哪些资料")
+
+
+# ============================================================
 # 主程序
 # ============================================================
 
@@ -184,6 +242,9 @@ if __name__ == "__main__":
     print("\n")
 
     learn_memory()
+    print("\n")
+
+    learn_rag()
     print("\n")
 
     print("=" * 50)

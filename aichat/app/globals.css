@@ -12,7 +12,7 @@ body {
 }
 
 .chat-container {
-  max-width: 800px;
+  max-width: 900px;
   margin: 0 auto;
   height: 100vh;
   display: flex;
@@ -20,6 +20,7 @@ body {
   background-color: #fff;
 }
 
+/* 头部 */
 .chat-header {
   padding: 16px 20px;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -39,6 +40,115 @@ body {
   margin-top: 4px;
 }
 
+.header-actions {
+  margin-top: 8px;
+}
+
+/* 工具栏 */
+.toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 20px;
+  background-color: #fafafa;
+  border-bottom: 1px solid #e8e8e8;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.rag-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.rag-label {
+  font-size: 14px;
+  color: #555;
+}
+
+/* 开关样式 */
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+}
+
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #ccc;
+  transition: 0.3s;
+  border-radius: 24px;
+}
+
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 18px;
+  width: 18px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  transition: 0.3s;
+  border-radius: 50%;
+}
+
+input:checked + .slider {
+  background-color: #667eea;
+}
+
+input:checked + .slider:before {
+  transform: translateX(20px);
+}
+
+/* 知识库信息 */
+.kb-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.kb-stats {
+  font-size: 12px;
+  color: #888;
+}
+
+.kb-sources {
+  color: #667eea;
+}
+
+.load-kb-button {
+  padding: 6px 14px;
+  background: #f0f0f0;
+  border: 1px solid #ddd;
+  border-radius: 16px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.load-kb-button:hover:not(:disabled) {
+  background: #e0e0e0;
+}
+
+.load-kb-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 消息列表 */
 .chat-messages {
   flex: 1;
   overflow-y: auto;
@@ -51,7 +161,7 @@ body {
 .message {
   display: flex;
   gap: 12px;
-  max-width: 80%;
+  max-width: 90%;
   animation: fadeIn 0.3s ease;
 }
 
@@ -96,6 +206,13 @@ body {
   color: #666;
 }
 
+/* 消息包装器 */
+.message-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
 .message-content {
   padding: 12px 16px;
   border-radius: 16px;
@@ -133,6 +250,54 @@ body {
   }
 }
 
+/* 来源展示 */
+.sources-box {
+  background-color: #f8f9ff;
+  border: 1px solid #e0e4ff;
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin-top: 4px;
+}
+
+.sources-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #667eea;
+  margin-bottom: 6px;
+}
+
+.source-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 0;
+  border-bottom: 1px solid #eee;
+}
+
+.source-item:last-child {
+  border-bottom: none;
+}
+
+.source-badge {
+  font-size: 11px;
+  color: #555;
+  background: #fff;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+.source-similarity {
+  font-size: 11px;
+  color: #888;
+}
+
+.rag-off-hint {
+  font-size: 11px;
+  color: #999;
+  padding: 4px 8px;
+}
+
+/* 输入区域 */
 .chat-input-area {
   padding: 16px 20px;
   border-top: 1px solid #e0e0e0;
@@ -185,6 +350,7 @@ body {
   cursor: not-allowed;
 }
 
+/* 空状态 */
 .empty-state {
   text-align: center;
   padding: 60px 20px;
@@ -201,6 +367,20 @@ body {
   font-size: 14px;
 }
 
+.rag-hint {
+  margin-top: 20px;
+  padding: 16px;
+  background: #f8f9ff;
+  border-radius: 12px;
+  border: 1px dashed #c5caff;
+}
+
+.rag-hint p {
+  color: #667eea;
+  font-size: 13px;
+}
+
+/* 清空按钮 */
 .clear-button {
   margin-top: 8px;
   padding: 6px 16px;

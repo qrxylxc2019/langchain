@@ -19,6 +19,26 @@ from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 # 加载环境变量
 load_dotenv()
 
+# ==================== 配置管理 ====================
+
+PROVIDER = os.getenv("PROVIDER", "deepseek").lower()
+
+if PROVIDER == "dashscope":
+    API_KEY = os.getenv("DASHSCOPE_API_KEY")
+    API_BASE = os.getenv("DASHSCOPE_API_BASE")
+    MODEL = os.getenv("DASHSCOPE_MODEL", "deepseek-v4-pro")
+    EMBEDDING_MODEL = os.getenv("DASHSCOPE_EMBEDDING_MODEL", "text-embedding-v3")
+    PROVIDER_NAME = "阿里云百炼"
+else:
+    API_KEY = os.getenv("DEEPSEEK_API_KEY")
+    API_BASE = os.getenv("DEEPSEEK_API_BASE")
+    MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
+    EMBEDDING_MODEL = None  # DeepSeek 不提供 embedding，需要单独处理
+    PROVIDER_NAME = "DeepSeek"
+
+print(f"🔧 当前 AI 提供商: {PROVIDER_NAME} ({PROVIDER})")
+print(f"🤖 使用模型: {MODEL}")
+
 # 确保可以导入 rag 模块
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from rag.rag_engine import RAGEngine
@@ -53,16 +73,20 @@ rag_chat_prompt = ChatPromptTemplate.from_messages([
 
 # ==================== 初始化 LangChain 组件 ====================
 
-# 1. 初始化 LLM (大语言模型)
-# 阿里云百炼 DeepSeek-v4-pro，兼容 OpenAI API 格式
-llm = ChatOpenAI(
-    model="deepseek-v4-pro",         # 阿里云百炼 DeepSeek-v4-pro
-    api_key=os.getenv("DASHSCOPE_API_KEY"),
-    base_url=os.getenv("DASHSCOPE_API_BASE"),
-    temperature=0.7,                 # 创造性程度 (0-2)
-    max_tokens=2048,
-    extra_body={"enable_thinking": False},  # 启用深度思考（阿里云百炼特有参数）
-)
+# 初始化 LLM (大语言模型)
+llm_kwargs = {
+    "model": MODEL,
+    "api_key": API_KEY,
+    "base_url": API_BASE,
+    "temperature": 0.7,
+    "max_tokens": 2048,
+}
+
+# 阿里云百炼特有参数
+if PROVIDER == "dashscope":
+    llm_kwargs["extra_body"] = {"enable_thinking": False}
+
+llm = ChatOpenAI(**llm_kwargs)
 
 # 2. 手动管理对话历史（LangChain 1.x 推荐方式）
 conversation_history = []
@@ -87,7 +111,10 @@ def index():
     """首页，检查服务是否运行"""
     return jsonify({
         "status": "running",
-        "message": "LangChain + Flask + RAG 后端服务已启动",
+        "provider": PROVIDER,
+        "provider_name": PROVIDER_NAME,
+        "model": MODEL,
+        "message": f"LangChain + Flask + RAG 后端服务已启动 ({PROVIDER_NAME})",
         "endpoints": [
             "/api/chat                - 普通对话",
             "/api/chat/stream         - 流式对话",

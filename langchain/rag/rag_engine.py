@@ -37,18 +37,44 @@ from langchain_core.messages import HumanMessage, SystemMessage
 # 加载环境变量
 load_dotenv()
 
-# ==================== 配置 ====================
+# ==================== 配置管理 ====================
+
+PROVIDER = os.getenv("PROVIDER", "deepseek").lower()
+
+if PROVIDER == "dashscope":
+    LLM_API_KEY = os.getenv("DASHSCOPE_API_KEY")
+    LLM_API_BASE = os.getenv("DASHSCOPE_API_BASE")
+    LLM_MODEL = os.getenv("DASHSCOPE_MODEL", "deepseek-v4-pro")
+    EMBEDDING_MODEL = os.getenv("DASHSCOPE_EMBEDDING_MODEL", "text-embedding-v3")
+    EMBEDDING_API_KEY = LLM_API_KEY
+    EMBEDDING_API_BASE = LLM_API_BASE
+    PROVIDER_NAME = "阿里云百炼"
+else:
+    LLM_API_KEY = os.getenv("DEEPSEEK_API_KEY")
+    LLM_API_BASE = os.getenv("DEEPSEEK_API_BASE")
+    LLM_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
+    # DeepSeek 不提供 embedding，使用阿里云百炼的 embedding（如果配置了）
+    EMBEDDING_MODEL = os.getenv("DASHSCOPE_EMBEDDING_MODEL", "text-embedding-v3")
+    EMBEDDING_API_KEY = os.getenv("DASHSCOPE_API_KEY")
+    EMBEDDING_API_BASE = os.getenv("DASHSCOPE_API_BASE")
+    PROVIDER_NAME = "DeepSeek"
 
 PDF_DIR = r"D:\ai\ai agent项目\langchain\pdf"
 DB_PATH = r"D:\ai\ai agent项目\langchain\rag\rag.db"
 
-# Embedding 模型配置
-EMBEDDING_MODEL = "text-embedding-v3"  # 阿里云百炼 embedding 模型
+# Embedding 维度
 EMBEDDING_DIM = 1024  # text-embedding-v3 的维度
 
 # 文本分割配置
 CHUNK_SIZE = 500      # 每个文本块的大小（字符数）
 CHUNK_OVERLAP = 100   # 文本块之间的重叠大小
+
+print(f"🔧 [RAG] AI 提供商: {PROVIDER_NAME}")
+print(f"🤖 [RAG] LLM 模型: {LLM_MODEL}")
+if EMBEDDING_API_KEY:
+    print(f"📊 [RAG] Embedding 模型: {EMBEDDING_MODEL}")
+else:
+    print("⚠️ [RAG] 未配置 Embedding，知识库功能将不可用")
 
 
 # ==================== 数据模型 ====================
@@ -321,24 +347,26 @@ class EmbeddingService:
     """文本向量化服务"""
 
     def __init__(self):
-        api_key = os.getenv("DASHSCOPE_API_KEY")
-
-        if not api_key:
-            raise ValueError("环境变量 DASHSCOPE_API_KEY 未设置，请检查 .env 文件")
+        if not EMBEDDING_API_KEY:
+            raise ValueError(
+                "未配置 Embedding API Key。\n"
+                "如果使用 DeepSeek，请在 .env 中配置 DASHSCOPE_API_KEY 用于 Embedding；\n"
+                "或者将 PROVIDER 改为 dashscope 使用阿里云百炼。"
+            )
 
         # 使用 DashScopeEmbeddings (阿里云百炼官方支持)
         if DashScopeEmbeddings is not None:
             self.embeddings = DashScopeEmbeddings(
                 model=EMBEDDING_MODEL,
-                dashscope_api_key=api_key,
+                dashscope_api_key=EMBEDDING_API_KEY,
             )
         else:
             # 备选方案：使用 OpenAIEmbeddings 兼容模式
             from langchain_openai import OpenAIEmbeddings
             self.embeddings = OpenAIEmbeddings(
                 model=EMBEDDING_MODEL,
-                api_key=api_key,
-                base_url=os.getenv("DASHSCOPE_API_BASE"),
+                api_key=EMBEDDING_API_KEY,
+                base_url=EMBEDDING_API_BASE,
             )
 
     def embed_texts(self, texts: List[str]) -> List[List[float]]:
@@ -368,14 +396,17 @@ class RAGEngine:
         self.embedding_service = EmbeddingService()
 
         # 初始化 LLM
-        self.llm = ChatOpenAI(
-            model="deepseek-v4-pro",
-            api_key=os.getenv("DASHSCOPE_API_KEY"),
-            base_url=os.getenv("DASHSCOPE_API_BASE"),
-            temperature=0.7,
-            max_tokens=2048,
-            extra_body={"enable_thinking": False},
-        )
+        llm_kwargs = {
+            "model": LLM_MODEL,
+            "api_key": LLM_API_KEY,
+            "base_url": LLM_API_BASE,
+            "temperature": 0.7,
+            "max_tokens": 2048,
+        }
+        if PROVIDER == "dashscope":
+            llm_kwargs["extra_body"] = {"enable_thinking": False}
+
+        self.llm = ChatOpenAI(**llm_kwargs)
 
         # RAG Prompt 模板
         self.rag_prompt = ChatPromptTemplate.from_messages([

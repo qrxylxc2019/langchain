@@ -28,6 +28,7 @@ export default function ChatPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [ragEnabled, setRagEnabled] = useState(false);
   const [kbStats, setKbStats] = useState<{ total_chunks: number; sources: string[] } | null>(null);
+  const [providerInfo, setProviderInfo] = useState<{ provider: string; provider_name: string; model: string } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -47,9 +48,10 @@ export default function ChatPage() {
     }
   }, [input]);
 
-  // 获取知识库状态
+  // 获取知识库状态和后端配置
   useEffect(() => {
     fetchKbStats();
+    fetchProviderInfo();
   }, []);
 
   const fetchKbStats = async () => {
@@ -58,6 +60,22 @@ export default function ChatPage() {
       const data = await res.json();
       if (data.success) {
         setKbStats({ total_chunks: data.total_chunks, sources: data.sources });
+      }
+    } catch {
+      // 忽略错误
+    }
+  };
+
+  const fetchProviderInfo = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/`);
+      const data = await res.json();
+      if (data.provider) {
+        setProviderInfo({
+          provider: data.provider,
+          provider_name: data.provider_name,
+          model: data.model,
+        });
       }
     } catch {
       // 忽略错误
@@ -177,7 +195,14 @@ export default function ChatPage() {
       {/* 头部 */}
       <header className="chat-header">
         <h1>🤖 AI 聊天助手</h1>
-        <p>基于 LangChain + DeepSeek + Flask + RAG</p>
+        <p>
+          基于 LangChain + Flask + RAG
+          {providerInfo && (
+            <span className="provider-badge">
+              {providerInfo.provider_name} / {providerInfo.model}
+            </span>
+          )}
+        </p>
         <div className="header-actions">
           {messages.length > 0 && (
             <button className="clear-button" onClick={clearChat}>

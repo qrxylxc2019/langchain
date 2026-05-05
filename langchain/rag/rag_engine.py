@@ -27,51 +27,63 @@ from dotenv import load_dotenv
 
 # LangChain 相关导入
 from langchain_openai import ChatOpenAI
-try:
-    from langchain_community.embeddings import DashScopeEmbeddings
-except ImportError:
-    DashScopeEmbeddings = None
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.messages import HumanMessage, SystemMessage
+
+# 百炼原生 SDK
+try:
+    import dashscope
+    from dashscope import TextEmbedding
+except ImportError:
+    dashscope = None
+    TextEmbedding = None
 
 # 加载环境变量
 load_dotenv()
 
 # ==================== 配置管理 ====================
 
+# LLM 配置
 PROVIDER = os.getenv("PROVIDER", "deepseek").lower()
 
 if PROVIDER == "dashscope":
     LLM_API_KEY = os.getenv("DASHSCOPE_API_KEY")
     LLM_API_BASE = os.getenv("DASHSCOPE_API_BASE")
     LLM_MODEL = os.getenv("DASHSCOPE_MODEL", "deepseek-v4-pro")
-    EMBEDDING_MODEL = os.getenv("DASHSCOPE_EMBEDDING_MODEL", "text-embedding-v3")
-    EMBEDDING_API_KEY = LLM_API_KEY
-    EMBEDDING_API_BASE = LLM_API_BASE
     PROVIDER_NAME = "阿里云百炼"
 else:
     LLM_API_KEY = os.getenv("DEEPSEEK_API_KEY")
     LLM_API_BASE = os.getenv("DEEPSEEK_API_BASE")
     LLM_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
-    # DeepSeek 不提供 embedding，使用阿里云百炼的 embedding（如果配置了）
-    EMBEDDING_MODEL = os.getenv("DASHSCOPE_EMBEDDING_MODEL", "text-embedding-v3")
-    EMBEDDING_API_KEY = os.getenv("DASHSCOPE_API_KEY")
-    EMBEDDING_API_BASE = os.getenv("DASHSCOPE_API_BASE")
     PROVIDER_NAME = "DeepSeek"
+
+# Embedding 配置（独立配置，支持硅基流动/百炼）
+EMBEDDING_PROVIDER = os.getenv("EMBEDDING_PROVIDER", "siliconflow").lower()
+
+if EMBEDDING_PROVIDER == "siliconflow":
+    EMBEDDING_API_KEY = os.getenv("SILICONFLOW_API_KEY")
+    EMBEDDING_API_BASE = os.getenv("SILICONFLOW_API_BASE", "https://api.siliconflow.cn/v1")
+    EMBEDDING_MODEL = os.getenv("SILICONFLOW_EMBEDDING_MODEL", "BAAI/bge-large-zh-v1.5")
+    EMBEDDING_PROVIDER_NAME = "硅基流动"
+    EMBEDDING_DIM = 1024  # bge-large-zh-v1.5 是 1024 维
+else:
+    EMBEDDING_API_KEY = os.getenv("DASHSCOPE_API_KEY")
+    EMBEDDING_API_BASE = os.getenv("DASHSCOPE_API_BASE", "https://dashscope.aliyuncs.com/compatible-mode/v1")
+    EMBEDDING_MODEL = os.getenv("DASHSCOPE_EMBEDDING_MODEL", "text-embedding-v3")
+    EMBEDDING_PROVIDER_NAME = "阿里云百炼"
+    EMBEDDING_DIM = 1024
 
 PDF_DIR = r"D:\ai\ai agent项目\langchain\pdf"
 DB_PATH = r"D:\ai\ai agent项目\langchain\rag\rag.db"
-
-# Embedding 维度
-EMBEDDING_DIM = 1024  # text-embedding-v3 的维度
 
 # 文本分割配置
 CHUNK_SIZE = 500      # 每个文本块的大小（字符数）
 CHUNK_OVERLAP = 100   # 文本块之间的重叠大小
 
-print(f"🔧 [RAG] AI 提供商: {PROVIDER_NAME}")
+print(f"🔧 [RAG] LLM 提供商: {PROVIDER_NAME}")
 print(f"🤖 [RAG] LLM 模型: {LLM_MODEL}")
 if EMBEDDING_API_KEY:
+    print(f"📊 [RAG] Embedding 提供商: {EMBEDDING_PROVIDER_NAME}")
     print(f"📊 [RAG] Embedding 模型: {EMBEDDING_MODEL}")
 else:
     print("⚠️ [RAG] 未配置 Embedding，知识库功能将不可用")
@@ -344,41 +356,66 @@ class TextSplitter:
 # ==================== Embedding 服务 ====================
 
 class EmbeddingService:
-    """文本向量化服务"""
+    """文本向量化服务 - 支持硅基流动/百炼"""
 
     def __init__(self):
         if not EMBEDDING_API_KEY:
             raise ValueError(
                 "未配置 Embedding API Key。\n"
-                "如果使用 DeepSeek，请在 .env 中配置 DASHSCOPE_API_KEY 用于 Embedding；\n"
-                "或者将 PROVIDER 改为 dashscope 使用阿里云百炼。"
+                "请在 .env 中配置 SILICONFLOW_API_KEY 或 DASHSCOPE_API_KEY。"
             )
 
-        # 使用 DashScopeEmbeddings (阿里云百炼官方支持)
-        if DashScopeEmbeddings is not None:
-            self.embeddings = DashScopeEmbeddings(
-                model=EMBEDDING_MODEL,
-                dashscope_api_key=EMBEDDING_API_KEY,
-            )
-        else:
-            # 备选方案：使用 OpenAIEmbeddings 兼容模式
+        if EMBEDDING_PROVIDER == "siliconflow":
+            # 硅基流动使用 OpenAI 兼容接口
             from langchain_openai import OpenAIEmbeddings
             self.embeddings = OpenAIEmbeddings(
                 model=EMBEDDING_MODEL,
                 api_key=EMBEDDING_API_KEY,
                 base_url=EMBEDDING_API_BASE,
             )
+            self.use_openai = True
+        else:
+            # 百炼使用原生 SDK
+            if dashscope is None:
+                raise ValueError("请先安装 dashscope: pip install dashscope")
+            dashscope.api_key = EMBEDDING_API_KEY
+            self.model = EMBEDDING_MODEL
+            self.use_openai = False
 
     def embed_texts(self, texts: List[str]) -> List[List[float]]:
         """将文本列表转换为向量"""
         print(f"🔄 正在向量化 {len(texts)} 个文本块...")
-        vectors = self.embeddings.embed_documents(texts)
+
+        if self.use_openai:
+            vectors = self.embeddings.embed_documents(texts)
+        else:
+            vectors = []
+            for text in texts:
+                resp = TextEmbedding.call(
+                    model=self.model,
+                    input=text
+                )
+                if resp.status_code == 200:
+                    vectors.append(resp.output["embeddings"][0]["embedding"])
+                else:
+                    raise ValueError(f"Embedding 调用失败: {resp.message}")
+
         print(f"✅ 向量化完成")
         return vectors
 
     def embed_query(self, query: str) -> List[float]:
         """将查询文本转换为向量"""
-        return self.embeddings.embed_query(query)
+        if self.use_openai:
+            return self.embeddings.embed_query(query)
+        else:
+            resp = TextEmbedding.call(
+                model=self.model,
+                input=query
+            )
+            if resp.status_code == 200:
+                return resp.output["embeddings"][0]["embedding"]
+            else:
+                raise ValueError(f"Embedding 调用失败: {resp.message}")
 
 
 # ==================== RAG 引擎 ====================

@@ -65,7 +65,7 @@ if EMBEDDING_PROVIDER == "siliconflow":
     EMBEDDING_API_BASE = os.getenv("SILICONFLOW_API_BASE", "https://api.siliconflow.cn/v1")
     EMBEDDING_MODEL = os.getenv("SILICONFLOW_EMBEDDING_MODEL", "BAAI/bge-large-zh-v1.5")
     EMBEDDING_PROVIDER_NAME = "硅基流动"
-    EMBEDDING_DIM = 1024  # bge-large-zh-v1.5 是 1024 维
+    EMBEDDING_DIM = 4096  # Qwen3-Embedding-8B 是 4096 维
 else:
     EMBEDDING_API_KEY = os.getenv("DASHSCOPE_API_KEY")
     EMBEDDING_API_BASE = os.getenv("DASHSCOPE_API_BASE", "https://dashscope.aliyuncs.com/compatible-mode/v1")
@@ -77,8 +77,10 @@ PDF_DIR = r"D:\ai\ai agent项目\langchain\pdf"
 DB_PATH = r"D:\ai\ai agent项目\langchain\rag\rag.db"
 
 # 文本分割配置
-CHUNK_SIZE = 500      # 每个文本块的大小（字符数）
-CHUNK_OVERLAP = 100   # 文本块之间的重叠大小
+# 硅基流动 embedding 限制: 单条最多 512 tokens
+# 中文字符约 1-2 tokens/字，250 字符以内比较安全
+CHUNK_SIZE = 250      # 每个文本块的大小（字符数）
+CHUNK_OVERLAP = 50    # 文本块之间的重叠大小
 
 print(f"🔧 [RAG] LLM 提供商: {PROVIDER_NAME}")
 print(f"🤖 [RAG] LLM 模型: {LLM_MODEL}")
@@ -383,13 +385,21 @@ class EmbeddingService:
             self.use_openai = False
 
     def embed_texts(self, texts: List[str]) -> List[List[float]]:
-        """将文本列表转换为向量"""
+        """将文本列表转换为向量（支持分批，每批最多32条）"""
         print(f"🔄 正在向量化 {len(texts)} 个文本块...")
 
+        BATCH_SIZE = 32  # 硅基流动最大批次限制
+        vectors = []
+
         if self.use_openai:
-            vectors = self.embeddings.embed_documents(texts)
+            # 硅基流动/OpenAI 兼容接口分批处理
+            for i in range(0, len(texts), BATCH_SIZE):
+                batch = texts[i:i + BATCH_SIZE]
+                print(f"   处理批次 {i // BATCH_SIZE + 1}/{(len(texts) - 1) // BATCH_SIZE + 1} ({len(batch)} 条)...")
+                batch_vectors = self.embeddings.embed_documents(batch)
+                vectors.extend(batch_vectors)
         else:
-            vectors = []
+            # 百炼原生 SDK 逐条处理
             for text in texts:
                 resp = TextEmbedding.call(
                     model=self.model,
